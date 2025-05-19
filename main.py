@@ -3,6 +3,24 @@ import re
 import pandas as pd
 import os
 
+# Katalog der Standorte mit präzisen Adressen
+STANDORTE = {
+    "Florianstr. 15": "Horb am Neckar",
+    "Coblitzallee 1-9": "Mannheim",
+    "Erzbergstr. 121": "Karlsruhe",
+    "Lohrtalweg 14": "Mosbach",
+    "Schloß 2": "Bad Mergentheim",
+    "Hangstr. 46-50": "Lörrach",
+    "Friedrichstr. 14": "Stuttgart (Präsidium)",
+    "Herdweg 21": "Stuttgart (DHBW)",
+    "Friedrich-Ebert-Str. 30": "Villingen-Schwenningen",
+    "Marienstr. 20": "Heidenheim",
+    "Marienplatz 2": "Ravensburg",
+    "Fallenbrunnen 2": "Friedrichshafen",
+    "Bildungscampus 4": "Heilbronn (DHBW)",
+    "Bildungscampus 23": "Heilbronn (CAS)"
+}
+
 def extract_data(pdf_path):
     """
     Öffnet die PDF, extrahiert das Datum des Anschreibens und die Tabelleneinträge,
@@ -26,8 +44,22 @@ def extract_data(pdf_path):
         # Tabelleneinträge extrahieren (Position und Betrag)
         pattern_tabelle = r'\n([^\n€]+?)\s*(?:\d+\)|\*+|†)?\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*€'
         matches = re.findall(pattern_tabelle, text)
-        pattern_ort = r'\b\d{5}\s+(?!Fellbach)([A-ZÄÖÜß][a-zäöüß]+(?:[-\s]+(?:am|im|an|der|Bad|Sankt|St\.|[A-ZÄÖÜß])[a-zäöüß]+)*?)(?=\n|$)'
-        matches_ort = re.findall(pattern_ort, text)
+
+        # Standort aus dem Katalog finden
+        standort = None
+        for adresse, ort in STANDORTE.items():
+            # Flexible Suche, um verschiedene Formatierungen zu berücksichtigen
+            pattern = r'\b' + re.escape(adresse.split()[0]) + r'(?:\s*\d*-?\d*)?'
+            if re.search(pattern, text):
+                # Genauere Überprüfung für Adressen mit Hausnummern
+                if len(adresse.split()) > 1:
+                    hausnummer = adresse.split()[1]
+                    if hausnummer in text or re.search(r'\b' + re.escape(adresse) + r'\b', text):
+                        standort = ort
+                        break
+                else:
+                    standort = ort
+                    break
 
         # Daten aufbereiten
         rows = []
@@ -37,10 +69,10 @@ def extract_data(pdf_path):
             amount = float(amount_str.replace('.', '').replace(',', '.'))
             rows.append({
                 'Position': pos_clean,
-                'Standort': matches_ort[0] if matches_ort else '',
+                'Standort': standort if standort else '',
                 'Datum des Anschreibens': letter_date,
                 'Betrag (€)': amount,
-                'Quelldatei': pdf_path  # Neue Spalte für den Dateinamen
+                'Quelldatei': os.path.basename(pdf_path)  # Nur Dateiname ohne Pfad
             })
 
         return rows
