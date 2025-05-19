@@ -11,4 +11,5 @@ wheels/
 
 # Data
 .data
+.archiv
 test.pdf
