@@ -23,7 +23,7 @@ STANDORTE = {
 
 def extract_data(pdf_path):
     """
-    Öffnet die PDF, extrahiert das Datum des Anschreibens und die Tabelleneinträge,
+    Öffnet deine einzelne PDF, extrahiert das Datum des Anschreibens und die Tabelleneinträge,
     und gibt ein pandas DataFrame mit den Spalten Position, Datum des Anschreibens, Betrag zurück.
     """
     try:
@@ -60,6 +60,10 @@ def extract_data(pdf_path):
                 else:
                     standort = ort
                     break
+        
+        # Text mit Verwendungszweck finden
+        pattern_verwendungszweck = r'\d{13}\s+Erst\.\:\s+\d{2}/\d{4}\s*[A-Z]\s+\+\s+\d{2}/\d{4}\s*[A-Z]'
+        verwendungszweck = re.findall(pattern_verwendungszweck, text)
 
         # Daten aufbereiten
         rows = []
@@ -72,7 +76,9 @@ def extract_data(pdf_path):
                 'Standort': standort if standort else '',
                 'Datum des Anschreibens': letter_date,
                 'Betrag (€)': amount,
-                'Quelldatei': os.path.basename(pdf_path)  # Nur Dateiname ohne Pfad
+                'Quelldatei': os.path.basename(pdf_path),  # Nur Dateiname ohne Pfad
+                'Abrechnungsstelle': str(os.path.basename(pdf_path)).split()[0],  # Erster Teil des Dateinamens als Abrechnungsstelle,
+                'Verwendungszweck': verwendungszweck[0] if verwendungszweck else ''
             })
 
         return rows
