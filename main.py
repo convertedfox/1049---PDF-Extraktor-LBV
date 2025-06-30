@@ -32,6 +32,7 @@ def extract_data(pdf_path):
             text = ""
             for page in pdf.pages:
                 text += page.extract_text() + "\n"
+            print(f"\n=== Verarbeite: {os.path.basename(pdf_path)} ===")
 
         # Datum des Anschreibens extrahieren (z.B. '05.09.2024')
         date_match = re.search(r'\b(\d{2}\.\d{2}\.\d{4})\b', text)
@@ -40,15 +41,43 @@ def extract_data(pdf_path):
             letter_date = None
         else:
             letter_date = date_match.group(1)
+            print(f"Datum gefunden: {letter_date}")
 
-        # Tabelleneinträge extrahieren (Position und Betrag)
-        pattern_tabelle = r'\n([^\n€]+?)\s*(?:\d+\)|\*+|†)?\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*€'
-        matches = re.findall(pattern_tabelle, text)
+        # VERBESSERTE Tabelleneinträge-Extraktion
+        # Wichtig: Nur Beträge mit LEERZEICHEN vor dem € sind Tabellenwerte!
+        # Pattern sucht nach: Position + Betrag mit Leerzeichen + € am Zeilenende
+        pattern_tabelle = r'^(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})\s+€\s*$'
+
+        rows = []
+
+        # Verarbeite Zeilen einzeln
+        lines = text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Suche nach Tabelleneinträgen
+            match = re.search(pattern_tabelle, line, re.MULTILINE)
+            if match:
+                position = match.group(1).strip()
+                # Bereinige Fußnoten (z.B. "1)")
+                position = re.sub(r'\s*\d+\)\s*$', '', position)
+                amount_str = match.group(2)
+
+                # Konvertiere Betrag zu float
+                amount = float(amount_str.replace('.', '').replace(',', '.'))
+
+                rows.append({
+                    'Position': position,
+                    'Betrag (€)': amount
+                })
+                print(f"  ✓ Gefunden: {position} | {amount_str} €")
 
         # Standort aus dem Katalog finden
         standort = None
         for adresse, ort in STANDORTE.items():
-            # Flexible Suche, um verschiedene Formatierungen zu berücksichtigen
+            # Flexible Suche
             pattern = r'\b' + re.escape(adresse.split()[0]) + r'(?:\s*\d*-?\d*)?'
             if re.search(pattern, text):
                 # Genauere Überprüfung für Adressen mit Hausnummern
@@ -60,26 +89,23 @@ def extract_data(pdf_path):
                 else:
                     standort = ort
                     break
-        
-        # Text mit Verwendungszweck finden
-        pattern_verwendungszweck = r'\d{13}\s+Erst\.\:\s+\d{2}/\d{4}\s*[A-Z]\s+\+\s+\d{2}/\d{4}\s*[A-Z]'
-        verwendungszweck = re.findall(pattern_verwendungszweck, text)
 
-        # Daten aufbereiten
-        rows = []
-        for position, amount_str in matches:
-            pos_clean = position.strip()
-            # Betrag in float umwandeln (Komma zu Punkt, Tausendertrennzeichen entfernen)
-            amount = float(amount_str.replace('.', '').replace(',', '.'))
-            rows.append({
-                'Position': pos_clean,
-                'Standort': standort if standort else '',
-                'Datum des Anschreibens': letter_date,
-                'Betrag (€)': amount,
-                'Quelldatei': os.path.basename(pdf_path),  # Nur Dateiname ohne Pfad
-                'Abrechnungsstelle': str(os.path.basename(pdf_path)).split()[0],  # Erster Teil des Dateinamens als Abrechnungsstelle,
-                'Verwendungszweck': verwendungszweck[0] if verwendungszweck else ''
-            })
+        print(f"Standort: {standort if standort else 'Nicht gefunden'}")
+
+        # Verwendungszweck finden
+        pattern_verwendungszweck = r'\d{13}\s+Erst\.\:\s+\d{2}/\d{4}\s*[A-Z]\s+\+\s+\d{2}/\d{4}\s*[A-Z]'
+        verwendungszweck_match = re.search(pattern_verwendungszweck, text)
+        verwendungszweck = verwendungszweck_match.group(0) if verwendungszweck_match else ''
+
+        # Füge Metadaten zu allen Zeilen hinzu
+        for row in rows:
+            row['Standort'] = standort if standort else ''
+            row['Datum des Anschreibens'] = letter_date
+            row['Quelldatei'] = os.path.basename(pdf_path)
+            row['Abrechnungsstelle'] = str(os.path.basename(pdf_path)).split()[0]
+            row['Verwendungszweck'] = verwendungszweck
+
+        print(f"\nGefundene Positionen: {len(rows)}")
 
         return rows
 
@@ -103,14 +129,14 @@ def process_all_pdfs(folder_path):
     # Jede PDF-Datei verarbeiten
     for pdf_file in pdf_files:
         pdf_path = os.path.join(folder_path, pdf_file)
-        print(f"Verarbeite {pdf_file}...")
-
         rows = extract_data(pdf_path)
         all_rows.extend(rows)
 
     # Kombiniertes DataFrame erstellen
     if all_rows:
         df = pd.DataFrame(all_rows)
+        # Sortiere nach Quelldatei
+        df = df.sort_values(['Quelldatei', 'Position'])
         return df
     else:
         print("Keine Daten gefunden.")
@@ -123,9 +149,40 @@ if __name__ == "__main__":
     df = process_all_pdfs(folder_path)
 
     if not df.empty:
-        print("\nGesamtes DataFrame:")
-        print(df)
+        print("\n" + "="*80)
+        print("EXTRAHIERTE TABELLENPOSITIONEN:")
+        print("="*80)
 
-        # Optional: DataFrame in CSV-Datei speichern
+        # Zeige die Daten schön formatiert
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.width', None)
+        pd.set_option('display.max_colwidth', 50)
+
+        print(df[['Position', 'Betrag (€)', 'Standort', 'Datum des Anschreibens']].to_string(index=False))
+
+        # Zusammenfassung
+        print("\n" + "="*80)
+        print("ZUSAMMENFASSUNG:")
+        print("="*80)
+        print(f"Anzahl Positionen: {len(df)}")
+
+        # Prüfe ob die Summe mit dem "verbleibenden Betrag" übereinstimmt
+        verbleibend = df[df['Position'].str.contains('verbleibender Betrag', case=False)]['Betrag (€)'].values
+        if len(verbleibend) > 0:
+            print(f"\nVerbleibender Betrag laut Dokument: {verbleibend[0]:,.2f} €")
+
+        # CSV und Excel Export
         df.to_csv("extracted_data.csv", index=False)
         print("\nDaten wurden in 'extracted_data.csv' gespeichert.")
+
+        with pd.ExcelWriter("extracted_data.xlsx", engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Tabellenpositionen', index=False)
+
+            # Füge Zusammenfassung hinzu
+            summary_df = pd.DataFrame({
+                'Metrik': ['Anzahl Positionen', 'Gesamtsumme'],
+                'Wert': [len(df), f"{total:,.2f} €"]
+            })
+            summary_df.to_excel(writer, sheet_name='Zusammenfassung', index=False)
+
+        print("Daten wurden auch in 'extracted_data.xlsx' gespeichert.")
