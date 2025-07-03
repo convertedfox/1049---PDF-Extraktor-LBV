@@ -3,6 +3,8 @@ import re
 import pandas as pd
 import os
 
+FOLDER_PATH = ".data"  # Ordner mit PDFs, kann angepasst werden
+
 # Katalog der Standorte mit präzisen Adressen
 STANDORTE = {
     "Florianstr. 15": "Horb am Neckar",
@@ -113,22 +115,22 @@ def extract_data(pdf_path):
         print(f"Fehler bei der Verarbeitung von {pdf_path}: {str(e)}")
         return []
 
-def process_all_pdfs(folder_path):
+def process_all_pdfs(FOLDER_PATH):
     """
     Verarbeitet alle PDFs in einem Ordner und gibt ein kombiniertes DataFrame zurück.
     """
     all_rows = []
 
     # Alle PDF-Dateien im Ordner finden
-    pdf_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.pdf')]
+    pdf_files = [f for f in os.listdir(FOLDER_PATH) if f.lower().endswith('.pdf')]
 
     if not pdf_files:
-        print(f"Keine PDF-Dateien im Ordner {folder_path} gefunden.")
+        print(f"Keine PDF-Dateien im Ordner {FOLDER_PATH} gefunden.")
         return pd.DataFrame()
 
     # Jede PDF-Datei verarbeiten
     for pdf_file in pdf_files:
-        pdf_path = os.path.join(folder_path, pdf_file)
+        pdf_path = os.path.join(FOLDER_PATH, pdf_file)
         rows = extract_data(pdf_path)
         all_rows.extend(rows)
 
@@ -186,10 +188,8 @@ def export_to_excel(df, filename="extracted_data.xlsx"):
         return False
 
 if __name__ == "__main__":
-    folder_path = ".data"  # Aktueller Ordner, kann angepasst werden
-
-    # Alle PDFs verarbeiten und kombiniertes DataFrame erstellen
-    df = process_all_pdfs(folder_path)
+        # Alle PDFs verarbeiten und kombiniertes DataFrame erstellen
+    df = process_all_pdfs(FOLDER_PATH)
 
     if not df.empty:
         print("\n" + "="*80)
