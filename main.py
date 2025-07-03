@@ -142,6 +142,49 @@ def process_all_pdfs(folder_path):
         print("Keine Daten gefunden.")
         return pd.DataFrame()
 
+def export_to_excel(df, filename="extracted_data.xlsx"):
+    """
+    Exportiert das DataFrame in eine Excel-Datei mit mehreren Arbeitsblättern.
+    """
+    try:
+        # Berechne Gesamtsumme
+        total = df['Betrag (€)'].sum()
+        
+        with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+            # Hauptdaten auf erstes Arbeitsblatt
+            df.to_excel(writer, sheet_name='Tabellenpositionen', index=False)
+            
+            # Zusammenfassung auf zweites Arbeitsblatt
+            summary_data = {
+                'Metrik': [
+                    'Anzahl Positionen',
+                    'Gesamtsumme (€)',
+                    'Anzahl Standorte',
+                    'Anzahl Dateien'
+                ],
+                'Wert': [
+                    len(df),
+                    f"{total:,.2f}",
+                    df['Standort'].nunique(),
+                    df['Quelldatei'].nunique()
+                ]
+            }
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name='Zusammenfassung', index=False)
+            
+            # Standort-Übersicht auf drittes Arbeitsblatt
+            if 'Standort' in df.columns:
+                standort_summary = df.groupby('Standort')['Betrag (€)'].agg(['count', 'sum']).reset_index()
+                standort_summary.columns = ['Standort', 'Anzahl Positionen', 'Gesamtbetrag (€)']
+                standort_summary.to_excel(writer, sheet_name='Standort-Übersicht', index=False)
+        
+        print(f"Excel-Datei '{filename}' wurde erfolgreich erstellt.")
+        return True
+        
+    except Exception as e:
+        print(f"Fehler beim Export in Excel: {str(e)}")
+        return False
+
 if __name__ == "__main__":
     folder_path = ".data"  # Aktueller Ordner, kann angepasst werden
 
@@ -171,18 +214,8 @@ if __name__ == "__main__":
         if len(verbleibend) > 0:
             print(f"\nVerbleibender Betrag laut Dokument: {verbleibend[0]:,.2f} €")
 
-        # CSV und Excel Export
-        df.to_csv("extracted_data.csv", index=False)
-        print("\nDaten wurden in 'extracted_data.csv' gespeichert.")
-
-        with pd.ExcelWriter("extracted_data.xlsx", engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Tabellenpositionen', index=False)
-
-            # Füge Zusammenfassung hinzu
-            summary_df = pd.DataFrame({
-                'Metrik': ['Anzahl Positionen', 'Gesamtsumme'],
-                'Wert': [len(df), f"{total:,.2f} €"]
-            })
-            summary_df.to_excel(writer, sheet_name='Zusammenfassung', index=False)
-
-        print("Daten wurden auch in 'extracted_data.xlsx' gespeichert.")
+        # Excel Export über eigene Funktion
+        export_to_excel(df, "extracted_data.xlsx")
+        
+    else:
+        print("Keine Daten zum Exportieren vorhanden.")
