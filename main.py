@@ -2,8 +2,11 @@ import pdfplumber
 import re
 import pandas as pd
 import os
+from datetime import datetime
 
 FOLDER_PATH = ".data"  # Ordner mit PDFs, kann angepasst werden
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") # timestamp für Dateinamen
+filename = f"extracted_data_{timestamp}.xlsx"
 
 # Katalog der Standorte mit präzisen Adressen
 STANDORTE = {
@@ -104,7 +107,7 @@ def extract_data(pdf_path):
             row['Standort'] = standort if standort else ''
             row['Datum des Anschreibens'] = letter_date
             row['Quelldatei'] = os.path.basename(pdf_path)
-            row['Abrechnungsstelle'] = str(os.path.basename(pdf_path)).split()[0]
+            row['Abrechnungsstelle'] = str(os.path.basename(pdf_path))[:4] # Nimm die ersten 4 Zeichen des Dateinamens
             row['Verwendungszweck'] = verwendungszweck
 
         print(f"\nGefundene Positionen: {len(rows)}")
@@ -144,7 +147,7 @@ def process_all_pdfs(FOLDER_PATH):
         print("Keine Daten gefunden.")
         return pd.DataFrame()
 
-def export_to_excel(df, filename="extracted_data.xlsx"):
+def export_to_excel(df, filename):
     """
     Exportiert das DataFrame in eine Excel-Datei mit mehreren Arbeitsblättern.
     """
@@ -215,7 +218,7 @@ if __name__ == "__main__":
             print(f"\nVerbleibender Betrag laut Dokument: {verbleibend[0]:,.2f} €")
 
         # Excel Export über eigene Funktion
-        export_to_excel(df, "extracted_data.xlsx")
+        export_to_excel(df, filename)
         
     else:
         print("Keine Daten zum Exportieren vorhanden.")
