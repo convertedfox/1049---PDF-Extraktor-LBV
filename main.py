@@ -4,9 +4,10 @@ import pandas as pd
 import os
 from datetime import datetime
 
-FOLDER_PATH = ".data"  # Ordner mit PDFs, kann angepasst werden
+FOLDER_PATH = ".data/08_2025"  # Ordner mit PDFs, kann angepasst werden
+EXPORT_PATH = ".data/export"   # Ordner, wohin die fertigen Exporte gespeichert werden
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") # timestamp für Dateinamen
-filename = f"extracted_data_{timestamp}.xlsx"
+filename = f"PDF_Extract_{timestamp}.xlsx"
 
 # Katalog der Standorte mit präzisen Adressen
 STANDORTE = {
@@ -152,10 +153,17 @@ def export_to_excel(df, filename):
     Exportiert das DataFrame in eine Excel-Datei mit mehreren Arbeitsblättern.
     """
     try:
+        # Stelle sicher, dass das Export-Verzeichnis existiert
+        os.makedirs(EXPORT_PATH, exist_ok=True)
+        
+        # Konstruiere den vollständigen Pfad zur Excel-Datei
+        full_path = os.path.join(EXPORT_PATH, filename)
+        
+        
         # Berechne Gesamtsumme
         total = df['Betrag (€)'].sum()
         
-        with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        with pd.ExcelWriter(full_path, engine='openpyxl') as writer:
             # Hauptdaten auf erstes Arbeitsblatt
             df.to_excel(writer, sheet_name='Tabellenpositionen', index=False)
             
