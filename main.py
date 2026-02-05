@@ -1,7 +1,8 @@
+import io
+import os
 import pdfplumber
 import re
 import pandas as pd
-import os
 from datetime import datetime
 
 FOLDER_PATH = ".data/12_2025"  # Ordner mit PDFs, kann angepasst werden
@@ -126,22 +127,28 @@ def extract_data(pdf_path):
         return []
 
 
-def process_all_pdfs(FOLDER_PATH):
+def process_all_pdfs(FOLDER_PATH, progress_callback=None):
     """
     Verarbeitet alle PDFs in einem Ordner und gibt ein kombiniertes DataFrame zurück.
     """
     all_rows = []
 
-    # Alle PDF-Dateien im Ordner finden
-    pdf_files = [f for f in os.listdir(FOLDER_PATH) if f.lower().endswith(".pdf")]
+    # Alle PDF-Dateien im Ordner (rekursiv) finden
+    pdf_files = []
+    for root, _, files in os.walk(FOLDER_PATH):
+        for file in files:
+            if file.lower().endswith(".pdf"):
+                pdf_files.append(os.path.join(root, file))
 
     if not pdf_files:
         print(f"Keine PDF-Dateien im Ordner {FOLDER_PATH} gefunden.")
         return pd.DataFrame()
 
     # Jede PDF-Datei verarbeiten
-    for pdf_file in pdf_files:
-        pdf_path = os.path.join(FOLDER_PATH, pdf_file)
+    total_files = len(pdf_files)
+    for index, pdf_path in enumerate(pdf_files, start=1):
+        if progress_callback:
+            progress_callback(index, total_files, pdf_path)
         rows = extract_data(pdf_path)
         all_rows.extend(rows)
 
@@ -167,46 +174,7 @@ def export_to_excel(df, filename):
         # Konstruiere den vollständigen Pfad zur Excel-Datei
         full_path = os.path.join(EXPORT_PATH, filename)
 
-        # Berechne Gesamtsumme
-        total = df["Betrag (€)"].sum()
-
-        with pd.ExcelWriter(full_path, engine="openpyxl") as writer:
-            # Hauptdaten auf erstes Arbeitsblatt
-            df.to_excel(writer, sheet_name="Tabellenpositionen", index=False)
-
-            # Zusammenfassung auf zweites Arbeitsblatt
-            summary_data = {
-                "Metrik": [
-                    "Anzahl Positionen",
-                    "Gesamtsumme (€)",
-                    "Anzahl Standorte",
-                    "Anzahl Dateien",
-                ],
-                "Wert": [
-                    len(df),
-                    f"{total:,.2f}",
-                    df["Standort"].nunique(),
-                    df["Quelldatei"].nunique(),
-                ],
-            }
-            summary_df = pd.DataFrame(summary_data)
-            summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
-
-            # Standort-Übersicht auf drittes Arbeitsblatt
-            if "Standort" in df.columns:
-                standort_summary = (
-                    df.groupby("Standort")["Betrag (€)"]
-                    .agg(["count", "sum"])
-                    .reset_index()
-                )
-                standort_summary.columns = [
-                    "Standort",
-                    "Anzahl Positionen",
-                    "Gesamtbetrag (€)",
-                ]
-                standort_summary.to_excel(
-                    writer, sheet_name="Standort-Übersicht", index=False
-                )
+        _write_excel(df, full_path)
 
         print(f"Excel-Datei '{filename}' wurde erfolgreich erstellt.")
         return True
@@ -215,6 +183,55 @@ def export_to_excel(df, filename):
         print(f"Fehler beim Export in Excel: {str(e)}")
         return False
 
+
+def export_to_excel_bytes(df):
+    """
+    Exportiert das DataFrame in eine Excel-Datei (Bytes) mit mehreren Arbeitsblättern.
+    """
+    buffer = io.BytesIO()
+    _write_excel(df, buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def _write_excel(df, target):
+    """
+    Schreibt die Excel-Datei entweder in einen Pfad oder in ein file-like Objekt.
+    """
+    total = df["Betrag (€)"].sum()
+
+    with pd.ExcelWriter(target, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Tabellenpositionen", index=False)
+
+        summary_data = {
+            "Metrik": [
+                "Anzahl Positionen",
+                "Gesamtsumme (€)",
+                "Anzahl Standorte",
+                "Anzahl Dateien",
+            ],
+            "Wert": [
+                len(df),
+                f"{total:,.2f}",
+                df["Standort"].nunique(),
+                df["Quelldatei"].nunique(),
+            ],
+        }
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
+
+        if "Standort" in df.columns:
+            standort_summary = (
+                df.groupby("Standort")["Betrag (€)"].agg(["count", "sum"]).reset_index()
+            )
+            standort_summary.columns = [
+                "Standort",
+                "Anzahl Positionen",
+                "Gesamtbetrag (€)",
+            ]
+            standort_summary.to_excel(
+                writer, sheet_name="Standort-Übersicht", index=False
+            )
 
 if __name__ == "__main__":
     # Alle PDFs verarbeiten und kombiniertes DataFrame erstellen
