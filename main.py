@@ -29,6 +29,25 @@ STANDORTE = {
 }
 
 
+def _extract_periods_from_filename(filename: str):
+    """
+    Extrahiert A- und B-Monat aus Dateinamen wie:
+    - 7002 10-2025A+11-2025B .pdf
+    - 7002_10-2025A+11-2025B__.pdf
+    """
+    # Suche robust nach "...MM-YYYYA+MM-YYYYB..." unabhängig von Trennzeichen
+    match = re.search(r"(\d{2})-\d{4}\s*A\s*\+\s*(\d{2})-\d{4}\s*B", filename)
+    if not match:
+        return None, None
+
+    try:
+        month_a = int(match.group(1))
+        month_b = int(match.group(2))
+        return month_a, month_b
+    except ValueError:
+        return None, None
+
+
 def extract_data(pdf_path):
     """
     Öffnet deine einzelne PDF, extrahiert das Datum des Anschreibens und die Tabelleneinträge,
@@ -109,14 +128,32 @@ def extract_data(pdf_path):
         )
 
         # Füge Metadaten zu allen Zeilen hinzu
+        source_filename = os.path.basename(pdf_path)
+        month_a, month_b = _extract_periods_from_filename(source_filename)
+        if month_a is None or month_b is None:
+            print(
+                f"Warnung: Keine A/B-Periode im Dateinamen erkannt: {source_filename}"
+            )
+
         for row in rows:
+            position_value = row.get("Position", "")
+            position_lower = str(position_value).lower()
+            if "vergütung" in position_lower:
+                buchungsperiode = month_a
+            elif "besoldung" in position_lower:
+                buchungsperiode = month_b
+            else:
+                # Fachlicher Fallback: A-Periode
+                buchungsperiode = month_a
+
             row["Standort"] = standort if standort else ""
             row["Datum des Anschreibens"] = letter_date
-            row["Quelldatei"] = os.path.basename(pdf_path)
-            row["Abrechnungsstelle"] = str(os.path.basename(pdf_path))[
+            row["Quelldatei"] = source_filename
+            row["Abrechnungsstelle"] = str(source_filename)[
                 :4
             ]  # Nimm die ersten 4 Zeichen des Dateinamens
             row["Verwendungszweck"] = verwendungszweck
+            row["Buchungsperiode"] = buchungsperiode
 
         print(f"\nGefundene Positionen: {len(rows)}")
 
@@ -199,9 +236,21 @@ def _write_excel(df, target):
     Schreibt die Excel-Datei entweder in einen Pfad oder in ein file-like Objekt.
     """
     total = df["Betrag (€)"].sum()
+    ordered_columns = [
+        "Position",
+        "Betrag (€)",
+        "Standort",
+        "Datum des Anschreibens",
+        "Quelldatei",
+        "Abrechnungsstelle",
+        "Verwendungszweck",
+        "Buchungsperiode",
+    ]
+    export_columns = [col for col in ordered_columns if col in df.columns]
+    df_export = df[export_columns] if export_columns else df
 
     with pd.ExcelWriter(target, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="Tabellenpositionen", index=False)
+        df_export.to_excel(writer, sheet_name="Tabellenpositionen", index=False)
 
         summary_data = {
             "Metrik": [
